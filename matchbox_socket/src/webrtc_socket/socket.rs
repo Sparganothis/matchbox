@@ -292,6 +292,11 @@ impl WebRtcChannel {
         &self.config
     }
 
+    /// Returns a clone of the sender for this channel.
+    pub fn clone_sender(&self) -> UnboundedSender<(PeerId, Packet)> {
+        self.tx.clone()
+    }
+
     /// Returns whether it's still possible to send messages.
     pub fn is_closed(&self) -> bool {
         self.tx.is_closed()
