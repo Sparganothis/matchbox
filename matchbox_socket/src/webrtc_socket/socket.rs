@@ -292,6 +292,16 @@ impl WebRtcChannel {
         &self.config
     }
 
+    /// Split the channel into a sender and receiver.
+    pub fn split(
+        self,
+    ) -> (
+        UnboundedSender<(PeerId, Packet)>,
+        UnboundedReceiver<(PeerId, Packet)>,
+    ) {
+        (self.tx, self.rx)
+    }
+
     /// Returns a clone of the sender for this channel.
     pub fn clone_sender(&self) -> UnboundedSender<(PeerId, Packet)> {
         self.tx.clone()
@@ -496,6 +506,18 @@ impl WebRtcSocket {
         WebRtcSocketBuilder::new(room_url)
             .add_channel(ChannelConfig::reliable())
             .build()
+    }
+}
+
+impl Stream for WebRtcSocket {
+    type Item = (PeerId, PeerState);
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let mut peer_state_rx = Pin::new(&mut self.get_mut().peer_state_rx);
+        peer_state_rx.as_mut().poll_next(cx)
     }
 }
 
