@@ -49,6 +49,7 @@ async fn async_main() {
                     info!("Peer joined: {peer}");
                     let packet = "hello friend!".as_bytes().to_vec().into_boxed_slice();
                     socket.channel_mut(CHANNEL_ID).send(packet, peer);
+                    let sender = socket.channel(CHANNEL_ID).clone_sender();
                 }
                 PeerState::Disconnected => {
                     info!("Peer left: {peer}");

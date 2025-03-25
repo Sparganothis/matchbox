@@ -5,7 +5,7 @@ use super::{
 use crate::{
     webrtc_socket::{
         error::SignalingError, messages::PeerSignal, signal_peer::SignalPeer,
-        socket::create_data_channels_ready_fut, ChannelConfig, Messenger, Packet, Signaller,
+        socket::{create_buffer_low_channels, create_data_channels_ready_fut}, ChannelConfig, Messenger, Packet, Signaller,
     },
     RtcIceServerConfig,
 };
@@ -122,6 +122,7 @@ impl Messenger for NativeMessenger {
         Vec<Arc<RTCDataChannel>>,
         Pin<Box<dyn FusedFuture<Output = Result<(), webrtc::Error>> + Send>>,
         Receiver<()>,
+        Vec<Receiver<()>>,
     );
 
     async fn offer_handshake(
@@ -145,6 +146,8 @@ impl Messenger for NativeMessenger {
             let (data_channel_ready_txs, data_channels_ready_fut) =
                 create_data_channels_ready_fut(channel_configs);
 
+            let (buffered_amount_low_txs, buffered_amount_low_rxs) = create_buffer_low_channels(channel_configs);
+
             let data_channels = create_data_channels(
                 &connection,
                 data_channel_ready_txs,
@@ -152,6 +155,7 @@ impl Messenger for NativeMessenger {
                 peer_disconnected_tx,
                 messages_from_peers_tx,
                 channel_configs,
+                buffered_amount_low_txs,
             )
             .await;
 
@@ -202,6 +206,7 @@ impl Messenger for NativeMessenger {
                     data_channels,
                     trickle_fut,
                     peer_disconnected_rx,
+                    buffered_amount_low_rxs,
                 ),
             }
         }
@@ -230,6 +235,8 @@ impl Messenger for NativeMessenger {
             let (data_channel_ready_txs, data_channels_ready_fut) =
                 create_data_channels_ready_fut(channel_configs);
 
+            let (buffered_amount_low_txs, buffered_amount_low_rxs) = create_buffer_low_channels(channel_configs);
+
             let data_channels = create_data_channels(
                 &connection,
                 data_channel_ready_txs,
@@ -237,6 +244,7 @@ impl Messenger for NativeMessenger {
                 peer_disconnected_tx.clone(),
                 messages_from_peers_tx,
                 channel_configs,
+                buffered_amount_low_txs,
             )
             .await;
 
@@ -277,6 +285,7 @@ impl Messenger for NativeMessenger {
                     data_channels,
                     trickle_fut,
                     peer_disconnected_rx,
+                    buffered_amount_low_rxs,
                 ),
             }
         }
@@ -286,7 +295,7 @@ impl Messenger for NativeMessenger {
 
     async fn peer_loop(peer_uuid: PeerId, handshake_meta: Self::HandshakeMeta) -> PeerId {
         async {
-            let (mut to_peer_message_rx, data_channels, mut trickle_fut, mut peer_disconnected) =
+            let (mut to_peer_message_rx, data_channels, mut trickle_fut, mut peer_disconnected, mut buffered_amount_low_rxs) =
                 handshake_meta;
 
             assert_eq!(
@@ -298,13 +307,19 @@ impl Messenger for NativeMessenger {
             let mut message_loop_futs: FuturesUnordered<_> = data_channels
                 .iter()
                 .zip(to_peer_message_rx.iter_mut())
-                .map(|(data_channel, rx)| async move {
+                .zip(buffered_amount_low_rxs.iter_mut())
+                .map(|((data_channel, rx), buffered_amount_low_rx)| async move {
                     while let Some(message) = rx.next().await {
                         trace!("sending packet {message:?}");
+                        let message_size = message.len();
                         let message = message.clone();
                         let message = Bytes::from(message);
                         if let Err(e) = data_channel.send(&message).await {
                             error!("error sending to data channel: {e:?}")
+                        }
+                        let buffered_amount = data_channel.buffered_amount().await;
+                        if buffered_amount + message_size > MAX_BUFFERED_AMOUNT {
+                            let _x = buffered_amount_low_rx.next().await;
                         }
                     }
                 })
@@ -492,6 +507,7 @@ async fn create_data_channels(
     peer_disconnected_tx: Sender<()>,
     from_peer_message_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
     channel_configs: &[ChannelConfig],
+    buffered_amount_low: Vec<Sender<()>>
 ) -> Vec<Arc<RTCDataChannel>> {
     let mut channels = vec![];
     for (i, channel_config) in channel_configs.iter().enumerate() {
@@ -503,6 +519,7 @@ async fn create_data_channels(
             from_peer_message_tx.get(i).unwrap().clone(),
             channel_config,
             i,
+            buffered_amount_low.get(i).unwrap().clone()
         )
         .await;
 
@@ -511,6 +528,8 @@ async fn create_data_channels(
 
     channels
 }
+const BUFFERED_AMOUNT_LOW_THRESHOLD: usize = 2 * 1024 * 1024; // 2 MB
+const MAX_BUFFERED_AMOUNT: usize = 4 * 1024 * 1024; // 4 MB
 
 async fn create_data_channel(
     connection: &RTCPeerConnection,
@@ -520,6 +539,7 @@ async fn create_data_channel(
     from_peer_message_tx: UnboundedSender<(PeerId, Packet)>,
     channel_config: &ChannelConfig,
     channel_index: usize,
+    buffered_amount_low: Sender<()>
 ) -> Arc<RTCDataChannel> {
     let config = RTCDataChannelInit {
         ordered: Some(channel_config.ordered),
@@ -532,6 +552,16 @@ async fn create_data_channel(
         .create_data_channel(&format!("matchbox_socket_{channel_index}"), Some(config))
         .await
         .unwrap();
+
+    channel.set_buffered_amount_low_threshold(BUFFERED_AMOUNT_LOW_THRESHOLD).await;
+    channel.on_buffered_amount_low(Box::new(move || {
+        let mut buffered_amount_low = buffered_amount_low.clone();
+        Box::pin(async move {
+            use futures::SinkExt;
+            let _ = buffered_amount_low.send(()).await;
+        })
+    }))
+    .await;
 
     channel.on_open(Box::new(move || {
         debug!("Data channel ready");

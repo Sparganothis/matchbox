@@ -768,6 +768,17 @@ pub(crate) fn create_data_channels_ready_fut(
     (senders, Box::pin(wait_for_ready(receivers).fuse()))
 }
 
+pub(crate) fn create_buffer_low_channels(
+    channel_configs: &[ChannelConfig],
+) -> (
+    Vec<futures_channel::mpsc::Sender<()>>,
+    Vec<futures_channel::mpsc::Receiver<()>>,
+) {
+    (0..channel_configs.len())
+        .map(|_| futures_channel::mpsc::channel(1))
+        .unzip()
+}
+
 async fn wait_for_ready(channel_ready_rx: Vec<futures_channel::mpsc::Receiver<()>>) {
     for mut receiver in channel_ready_rx {
         if receiver.next().await.is_none() {
