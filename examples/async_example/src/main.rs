@@ -87,12 +87,12 @@ async fn async_main() {
                     info!("Peer joined: {peer}");
                     let (rx_sender, rx) = channel(1);
                     let (tx, mut tx_recv) = channel(1);
-                    let task = AbortOnDropHandle::new(spawn(socket_task(peer, tx, rx)));
                     let _task_tx_combine = AbortOnDropHandle::new(spawn(async move {
                         while let Some(packet) = tx_recv.recv().await {
                             tx0.send((peer, packet)).await.unwrap();
                         }
                     }));
+                    let task = AbortOnDropHandle::new(spawn(socket_task(peer, tx, rx)));
                     {
                         tasks_
                             .write()
@@ -118,7 +118,7 @@ async fn socket_task(peer: PeerId, tx: Sender<Packet>, mut rx: Receiver<Packet>)
     let writer = tx.clone();
     let _ping_task = spawn(async move {
         for _i in 0..20 {
-            n0_future::time::sleep(Duration::from_secs_f32(0.005)).await;
+            n0_future::time::sleep(Duration::from_secs_f32(0.25)).await;
             if _i == 0 {
                 writer
                     .send((b"hello friend!".to_vec().into()))
