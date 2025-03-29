@@ -274,9 +274,12 @@ async fn message_loop<M: Messenger>(
             message = next_peer_message_out => {
                 match message {
                     Some((channel_index, Some((peer, packet)))) => {
-                        let data_channel = data_channels
-                            .get_mut(&peer)
-                            .expect("couldn't find data channel for peer")
+                        let  Some (data_channel) = data_channels
+                            .get_mut(&peer) else {
+                                warn!("couldn't find data channel {} for peer: {}", channel_index, peer);
+                                continue;
+                            };
+                        let data_channel = data_channel
                             .get_mut(channel_index).unwrap_or_else(|| panic!("couldn't find data channel with index {channel_index}"));
                         if let Err(e) = data_channel.send(packet) {
                             // Peer we're sending to closed their end of the connection.
