@@ -1,5 +1,6 @@
 use super::{
     messages::{PeerEvent, PeerRequest},
+    socket::RtcIceServerConfig,
     HandshakeResult, PacketSendError, PeerDataSender, SignallerBuilder,
 };
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
         error::SignalingError, messages::PeerSignal, signal_peer::SignalPeer,
         socket::create_data_channels_ready_fut, ChannelConfig, Messenger, Packet, Signaller,
     },
-    RtcIceServerConfig,
+    RtcIceServerConfigs,
 };
 use async_compat::CompatExt;
 use async_trait::async_trait;
@@ -128,7 +129,7 @@ impl Messenger for NativeMessenger {
         signal_peer: SignalPeer,
         mut peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta> {
         async {
@@ -213,7 +214,7 @@ impl Messenger for NativeMessenger {
         signal_peer: SignalPeer,
         mut peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta> {
         async {
@@ -446,20 +447,32 @@ impl CandidateTrickle {
     }
 }
 
+impl Into<RTCConfiguration> for &RtcIceServerConfigs {
+    fn into(self) -> RTCConfiguration {
+        RTCConfiguration {
+            ice_servers: self.configs.iter().map(|c| c.into()).collect(),
+            ..Default::default()
+        }
+    }
+}
+
+impl Into<RTCIceServer> for &RtcIceServerConfig {
+    fn into(self) -> RTCIceServer {
+        RTCIceServer {
+            urls: self.urls.clone(),
+            username: self.username.clone().unwrap_or_default(),
+            credential: self.credential.clone().unwrap_or_default(),
+        }
+    }
+}
+
 async fn create_rtc_peer_connection(
     signal_peer: SignalPeer,
-    ice_server_config: &RtcIceServerConfig,
+    ice_server_config: &RtcIceServerConfigs,
 ) -> Result<(Arc<RTCPeerConnection>, Arc<CandidateTrickle>), Box<dyn std::error::Error>> {
     let api = APIBuilder::new().build();
 
-    let config = RTCConfiguration {
-        ice_servers: vec![RTCIceServer {
-            urls: ice_server_config.urls.clone(),
-            username: ice_server_config.username.clone().unwrap_or_default(),
-            credential: ice_server_config.credential.clone().unwrap_or_default(),
-        }],
-        ..Default::default()
-    };
+    let config = ice_server_config.into();
 
     let connection = api.new_peer_connection(config).await?;
     let connection = Arc::new(connection);

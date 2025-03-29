@@ -26,6 +26,14 @@ use tokio_util::{
 /// Configuration options for an ICE server connection.
 /// See also: <https://developer.mozilla.org/en-US/docs/Web/API/RTCIceServer#example>
 #[derive(Debug, Clone)]
+pub struct RtcIceServerConfigs {
+    /// A list of ICE server configurations
+    pub configs: Vec<RtcIceServerConfig>,
+}
+
+/// Configuration options for an ICE server connection.
+/// See also: <https://developer.mozilla.org/en-US/docs/Web/API/RTCIceServer#example>
+#[derive(Debug, Clone)]
 pub struct RtcIceServerConfig {
     /// An ICE server instance can have several URLs
     pub urls: Vec<String>,
@@ -71,15 +79,17 @@ impl ChannelConfig {
     }
 }
 
-impl Default for RtcIceServerConfig {
+impl Default for RtcIceServerConfigs {
     fn default() -> Self {
         Self {
-            urls: vec![
-                "stun:stun.l.google.com:19302".to_string(),
-                "stun:stun1.l.google.com:19302".to_string(),
-            ],
-            username: Default::default(),
-            credential: Default::default(),
+            configs: vec![RtcIceServerConfig {
+                urls: vec![
+                    "stun:stun.l.google.com:19302".to_string(),
+                    "stun:stun1.l.google.com:19302".to_string(),
+                ],
+                username: Default::default(),
+                credential: Default::default(),
+            }],
         }
     }
 }
@@ -99,7 +109,7 @@ pub(crate) struct SocketConfig {
     /// The last form will pair player in the order they connect.
     pub(crate) room_url: String,
     /// Configuration for the (single) ICE server
-    pub(crate) ice_server: RtcIceServerConfig,
+    pub(crate) ice_server: RtcIceServerConfigs,
     /// Configuration for one or multiple reliable or unreliable data channels
     pub(crate) channels: Vec<ChannelConfig>,
     /// The amount of attempts to initiate connection
@@ -129,7 +139,7 @@ impl WebRtcSocketBuilder {
         Self {
             config: SocketConfig {
                 room_url: room_url.into(),
-                ice_server: RtcIceServerConfig::default(),
+                ice_server: RtcIceServerConfigs::default(),
                 channels: Vec::default(),
                 attempts: Some(3),
                 keep_alive_interval: Some(Duration::from_secs(10)),
@@ -139,7 +149,7 @@ impl WebRtcSocketBuilder {
     }
 
     /// Sets the socket ICE server configuration.
-    pub fn ice_server(mut self, ice_server: RtcIceServerConfig) -> Self {
+    pub fn ice_server(mut self, ice_server: RtcIceServerConfigs) -> Self {
         self.config.ice_server = ice_server;
         self
     }

@@ -12,6 +12,6 @@ pub use error::Error;
 pub use matchbox_protocol::PeerId;
 pub use webrtc_socket::{
     error::ChannelError, ChannelConfig, MessageLoopFuture, Packet, PeerEvent, PeerRequest,
-    PeerSignal, PeerState, RtcIceServerConfig, Signaller, SignallerBuilder, WebRtcChannel,
-    WebRtcSocket, WebRtcSocketBuilder,
+    PeerSignal, PeerState, RtcIceServerConfig, RtcIceServerConfigs, Signaller, SignallerBuilder,
+    WebRtcChannel, WebRtcSocket, WebRtcSocketBuilder,
 };

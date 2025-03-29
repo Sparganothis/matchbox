@@ -16,7 +16,8 @@ use matchbox_protocol::PeerId;
 pub use messages::*;
 pub(crate) use socket::MessageLoopChannels;
 pub use socket::{
-    ChannelConfig, PeerState, RtcIceServerConfig, WebRtcChannel, WebRtcSocket, WebRtcSocketBuilder,
+    ChannelConfig, PeerState, RtcIceServerConfig, RtcIceServerConfigs, WebRtcChannel, WebRtcSocket,
+    WebRtcSocketBuilder,
 };
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
@@ -151,7 +152,7 @@ trait Messenger {
         signal_peer: SignalPeer,
         mut peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta>;
 
@@ -159,7 +160,7 @@ trait Messenger {
         signal_peer: SignalPeer,
         peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta>;
 
@@ -168,7 +169,7 @@ trait Messenger {
 
 async fn message_loop<M: Messenger>(
     id_tx: futures_channel::oneshot::Sender<PeerId>,
-    ice_server_config: &RtcIceServerConfig,
+    ice_server_config: &RtcIceServerConfigs,
     channel_configs: &[ChannelConfig],
     channels: MessageLoopChannels,
     keep_alive_interval: Option<Duration>,

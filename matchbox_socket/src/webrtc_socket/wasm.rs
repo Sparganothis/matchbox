@@ -5,7 +5,7 @@ use super::{
 };
 use crate::webrtc_socket::{
     error::SignalingError, messages::PeerSignal, signal_peer::SignalPeer,
-    socket::create_data_channels_ready_fut, ChannelConfig, Messenger, Packet, RtcIceServerConfig,
+    socket::create_data_channels_ready_fut, ChannelConfig, Messenger, Packet, RtcIceServerConfigs,
     Signaller,
 };
 use async_trait::async_trait;
@@ -110,7 +110,7 @@ impl Messenger for WasmMessenger {
         signal_peer: SignalPeer,
         mut peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta> {
         debug!("making offer");
@@ -206,7 +206,7 @@ impl Messenger for WasmMessenger {
         signal_peer: SignalPeer,
         mut peer_signal_rx: UnboundedReceiver<PeerSignal>,
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
-        ice_server_config: &RtcIceServerConfig,
+        ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
     ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta> {
         debug!("handshake_accept");
@@ -408,7 +408,7 @@ async fn try_add_rtc_ice_candidate(connection: &RtcPeerConnection, candidate_str
     .expect("failed to add ice candidate");
 }
 
-fn create_rtc_peer_connection(ice_server_config: &RtcIceServerConfig) -> RtcPeerConnection {
+fn create_rtc_peer_connection(ice_server_config: &RtcIceServerConfigs) -> RtcPeerConnection {
     #[derive(Serialize)]
     struct IceServerConfig {
         urls: Vec<String>,
@@ -417,12 +417,15 @@ fn create_rtc_peer_connection(ice_server_config: &RtcIceServerConfig) -> RtcPeer
     }
 
     let peer_config = RtcConfiguration::new();
-    let ice_server_config = IceServerConfig {
-        urls: ice_server_config.urls.clone(),
-        username: ice_server_config.username.clone().unwrap_or_default(),
-        credential: ice_server_config.credential.clone().unwrap_or_default(),
-    };
-    let ice_server_config_list = [ice_server_config];
+    let ice_server_config_list = ice_server_config
+        .configs
+        .iter()
+        .map(|c| IceServerConfig {
+            urls: c.urls.clone(),
+            username: c.username.clone().unwrap_or_default(),
+            credential: c.credential.clone().unwrap_or_default(),
+        })
+        .collect::<Vec<_>>();
     peer_config.set_ice_servers(&serde_wasm_bindgen::to_value(&ice_server_config_list).unwrap());
     let connection = RtcPeerConnection::new_with_configuration(&peer_config).unwrap();
 
