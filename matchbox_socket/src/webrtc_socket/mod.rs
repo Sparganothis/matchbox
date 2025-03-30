@@ -154,7 +154,7 @@ trait Messenger {
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
         ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
-    ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta>;
+    ) -> Result<HandshakeResult<Self::DataChannel, Self::HandshakeMeta>, (PeerId, SignalingError)>;
 
     async fn accept_handshake(
         signal_peer: SignalPeer,
@@ -162,7 +162,7 @@ trait Messenger {
         messages_from_peers_tx: Vec<UnboundedSender<(PeerId, Packet)>>,
         ice_server_config: &RtcIceServerConfigs,
         channel_configs: &[ChannelConfig],
-    ) -> HandshakeResult<Self::DataChannel, Self::HandshakeMeta>;
+    ) -> Result<HandshakeResult<Self::DataChannel, Self::HandshakeMeta>, (PeerId, SignalingError)>;
 
     async fn peer_loop(peer_uuid: PeerId, handshake_meta: Self::HandshakeMeta) -> PeerId;
 }
@@ -256,6 +256,17 @@ async fn message_loop<M: Messenger>(
             }
 
             handshake_result = handshakes.select_next_some() => {
+                let handshake_result = match handshake_result {
+                    Ok(handshake_result) => handshake_result,
+                    Err((peer_uuid, e)) => {
+                        warn!("error during handshake: {e:?}");
+                        if peer_state_tx.unbounded_send((peer_uuid, PeerState::Disconnected)).is_err() {
+                            // socket dropped, exit cleanly
+                            break Ok(());
+                        }
+                        continue;
+                    }
+                };
                 data_channels.insert(handshake_result.peer_id, handshake_result.data_channels);
                 if peer_state_tx.unbounded_send((handshake_result.peer_id, PeerState::Connected)).is_err() {
                     // sending can only fail on socket drop, in which case connected_peers is unavailable, ignore

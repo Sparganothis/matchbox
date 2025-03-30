@@ -52,6 +52,10 @@ pub enum SignalingError {
     /// [`Signaller`] implementations
     #[error("User implementation error: {0}")]
     UserImplementationError(String),
+
+    /// Handshake failed
+    #[error("handshake failed: {0:?}")]
+    HandshakeFailed(()),
 }
 
 cfg_if! {
